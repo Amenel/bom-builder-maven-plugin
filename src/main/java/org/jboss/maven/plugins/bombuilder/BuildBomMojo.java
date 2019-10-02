@@ -1,5 +1,8 @@
 package org.jboss.maven.plugins.bombuilder;
 
+import static org.codehaus.plexus.util.StringUtils.defaultString;
+import static org.codehaus.plexus.util.StringUtils.trim;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -26,248 +29,236 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuilder;
 import org.codehaus.plexus.util.StringUtils;
 
-import static org.codehaus.plexus.util.StringUtils.defaultString;
-import static org.codehaus.plexus.util.StringUtils.trim;
-
 /**
  * Build a BOM based on the dependencies in a GAV
  */
-@Mojo( name = "build-bom", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresDependencyResolution = ResolutionScope.COMPILE )
-public class BuildBomMojo
-    extends AbstractMojo
-{
+@Mojo(name = "build-bom", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresDependencyResolution = ResolutionScope.COMPILE)
+public class BuildBomMojo extends AbstractMojo {
 
-    private static final String VERSION_PROPERTY_PREFIX = "version.";
-    /**
-     * BOM groupId
-     */
-    @Parameter( required = true )
-    private String bomGroupId;
+	public static final String VERSION_PROPERTY_PREFIX = "version.";
+	public static final String VERSION_PROPERTY_SUFFIX = "-version";
+	/**
+	 * BOM groupId
+	 */
+	@Parameter(required = true)
+	private String bomGroupId;
 
-    /**
-     * BOM artifactId
-     */
-    @Parameter( required = true )
-    private String bomArtifactId;
+	/**
+	 * BOM artifactId
+	 */
+	@Parameter(required = true)
+	private String bomArtifactId;
 
-    /**
-     * BOM version
-     */
-    @Parameter( required = true )
-    private String bomVersion;
+	/**
+	 * BOM version
+	 */
+	@Parameter(required = true)
+	private String bomVersion;
 
-    /**
-     * BOM name
-     */
-    @Parameter( defaultValue = "" )
-    private String bomName;
+	/**
+	 * BOM name
+	 */
+	@Parameter(defaultValue = "")
+	private String bomName;
 
-    /**
-     * BOM name
-     */
-    @Parameter
-    private boolean addVersionProperties;
+	/**
+	 * BOM name
+	 */
+	@Parameter
+	private boolean addVersionProperties;
 
-   /**
-     * BOM description
-     */
-    @Parameter( defaultValue = "" )
-    private String bomDescription;
+	/**
+	 * BOM description
+	 */
+	@Parameter(defaultValue = "")
+	private String bomDescription;
 
-    /**
-     * BOM output file
-     */
-    @Parameter( defaultValue = "bom-pom.xml" )
-    String outputFilename;
+	/**
+	 * Whether to use a prefix (if {@code true}) or a suffix.
+	 */
+	@Parameter(property = "bom-builder.useVersionSuffix")
+	private boolean useVersionSuffix;
 
-    /**
-     * Whether the BOM should include the dependency exclusions that
-     * are present in the source POM.  By default the exclusions
-     * will not be copied to the new BOM.
-     */
-    @Parameter
-    private List<BomExclusion> exclusions;
+	/**
+	 * BOM output file
+	 */
+	@Parameter(defaultValue = "bom-pom.xml")
+	String outputFilename;
 
-    /**
-     * List of dependencies which should not be added to BOM
-     */
-    @Parameter
-    private List<DependencyExclusion> dependencyExclusions;
+	/**
+	 * Whether the BOM should include the dependency exclusions that are present in
+	 * the source POM. By default the exclusions will not be copied to the new BOM.
+	 */
+	@Parameter
+	private List<BomExclusion> exclusions;
 
+	/**
+	 * List of dependencies which should not be added to BOM
+	 */
+	@Parameter
+	private List<DependencyExclusion> dependencyExclusions;
 
-    /**
-     * Whether use properties to specify dependency versions in BOM
-     */
-    @Parameter
-    boolean usePropertiesForVersion;
+	/**
+	 * Whether use properties to specify dependency versions in BOM
+	 */
+	@Parameter
+	boolean usePropertiesForVersion;
 
-    /**
-     * The current project
-     */
-    @Component
-    MavenProject mavenProject;
+	/**
+	 * The current project
+	 */
+	@Component
+	MavenProject mavenProject;
 
-    /**
-     *
-     */
-    @Component
-    private ModelBuilder modelBuilder;
+	/**
+	 *
+	 */
+	@Component
+	private ModelBuilder modelBuilder;
 
-    /**
-     *
-     */
-    @Component
-    private ProjectBuilder projectBuilder;
+	/**
+	 *
+	 */
+	@Component
+	private ProjectBuilder projectBuilder;
 
-    private final PomDependencyVersionsTransformer versionsTransformer;
-    private final ModelWriter modelWriter;
-    
-    public BuildBomMojo() {
-        this(new ModelWriter(), new PomDependencyVersionsTransformer());
-    }
+	private final PomDependencyVersionsTransformer versionsTransformer;
+	private final ModelWriter modelWriter;
 
-    public BuildBomMojo(ModelWriter modelWriter, PomDependencyVersionsTransformer versionsTransformer) {
-        this.versionsTransformer = versionsTransformer;
-        this.modelWriter = modelWriter;
-    }
+	public BuildBomMojo() {
+		this(new ModelWriter(), new PomDependencyVersionsTransformer());
+	}
 
-    public void execute()
-        throws MojoExecutionException
-    {
-        getLog().debug( "Generating BOM" );
-        Model model = initializeModel();
-        addDependencyManagement( model );
-        if (usePropertiesForVersion) {
-            model = versionsTransformer.transformPomModel(model);
-            getLog().debug( "Dependencies versions converted to properties" );
-        }
-        modelWriter.writeModel(model, new File(mavenProject.getBuild().getDirectory(), outputFilename));
-    }
+	public BuildBomMojo(ModelWriter modelWriter, PomDependencyVersionsTransformer versionsTransformer) {
+		this.versionsTransformer = versionsTransformer;
+		this.modelWriter = modelWriter;
+	}
 
-    private Model initializeModel()
-    {
-        Model pomModel = new Model();
-        pomModel.setModelVersion( "4.0.0" );
+	public void execute() throws MojoExecutionException {
+		getLog().debug("Generating BOM");
+		Model model = initializeModel();
+		addDependencyManagement(model);
+		if (usePropertiesForVersion) {
+			model = versionsTransformer.transformPomModel(model, useVersionSuffix);
+			getLog().debug("Dependencies versions converted to properties");
+		}
+		modelWriter.writeModel(model, new File(mavenProject.getBuild().getDirectory(), outputFilename));
+	}
 
-        pomModel.setGroupId( bomGroupId );
-        pomModel.setArtifactId( bomArtifactId );
-        pomModel.setVersion( bomVersion );
-        pomModel.setPackaging( "pom" );
+	private Model initializeModel() {
+		Model pomModel = new Model();
+		pomModel.setModelVersion("4.0.0");
 
-        pomModel.setName( bomName );
-        pomModel.setDescription( bomDescription );
+		pomModel.setGroupId(bomGroupId);
+		pomModel.setArtifactId(bomArtifactId);
+		pomModel.setVersion(bomVersion);
+		pomModel.setPackaging("pom");
 
-        pomModel.setProperties(new OrderedProperties());
-        pomModel.getProperties().setProperty( "project.build.sourceEncoding", "UTF-8" );
+		pomModel.setName(bomName);
+		pomModel.setDescription(bomDescription);
 
-        return pomModel;
-    }
+		pomModel.setProperties(new OrderedProperties());
+		pomModel.getProperties().setProperty("project.build.sourceEncoding", "UTF-8");
 
-    private void addDependencyManagement( Model pomModel )
-    {
-        // Sort the artifacts for readability
-        List<Artifact> projectArtifacts = new ArrayList<Artifact>( mavenProject.getArtifacts() );
-        Collections.sort( projectArtifacts );
+		return pomModel;
+	}
 
-        Properties versionProperties = new Properties();
-        DependencyManagement depMgmt = new DependencyManagement();
-        for ( Artifact artifact : projectArtifacts )
-        {
-            if (isExcludedDependency(artifact)) {
-                continue;
-            }
+	private void addDependencyManagement(Model pomModel) {
+		// Sort the artifacts for readability
+		List<Artifact> projectArtifacts = new ArrayList<Artifact>(mavenProject.getArtifacts());
+		Collections.sort(projectArtifacts);
 
-            String versionPropertyName = VERSION_PROPERTY_PREFIX + artifact.getGroupId();
-            if (versionProperties.getProperty(versionPropertyName) != null
-                && !versionProperties.getProperty(versionPropertyName).equals(artifact.getVersion())) {
-                versionPropertyName = VERSION_PROPERTY_PREFIX + artifact.getGroupId() + "." + artifact.getArtifactId();
-            }
-            versionProperties.setProperty(versionPropertyName, artifact.getVersion());
+		Properties versionProperties = new Properties();
+		DependencyManagement depMgmt = new DependencyManagement();
+		for (Artifact artifact : projectArtifacts) {
+			if (isExcludedDependency(artifact)) {
+				continue;
+			}
 
-            Dependency dep = new Dependency();
-            dep.setGroupId( artifact.getGroupId() );
-            dep.setArtifactId( artifact.getArtifactId() );
-            dep.setVersion( artifact.getVersion() );
-            if ( !StringUtils.isEmpty( artifact.getClassifier() ))
-            {
-                dep.setClassifier( artifact.getClassifier() );
-            }
-            if ( !StringUtils.isEmpty( artifact.getType() ))
-            {
-                dep.setType( artifact.getType() );
-            }
-            if (exclusions != null) {
-                applyExclusions(artifact, dep);
-            }
-            depMgmt.addDependency( dep );
-        }
-        pomModel.setDependencyManagement( depMgmt );
-        if (addVersionProperties) {
-            pomModel.getProperties().putAll(versionProperties);
-        }
-        getLog().debug( "Added " + projectArtifacts.size() + " dependencies." );
-    }
+			String versionPropertyName = VERSION_PROPERTY_SUFFIX + artifact.getGroupId();
+			if (versionProperties.getProperty(versionPropertyName) != null
+					&& !versionProperties.getProperty(versionPropertyName).equals(artifact.getVersion())) {
+				versionPropertyName = VERSION_PROPERTY_SUFFIX + artifact.getGroupId() + "." + artifact.getArtifactId();
+			}
+			versionProperties.setProperty(versionPropertyName, artifact.getVersion());
 
-    boolean isExcludedDependency(Artifact artifact) {
-        if (dependencyExclusions == null || dependencyExclusions.size() == 0) {
-            return false;
-        }
-        for (DependencyExclusion exclusion : dependencyExclusions) {
-            if (matchesExcludedDependency(artifact, exclusion)) {
-                getLog().debug( "Artifact " + artifact.getGroupId() + ":" + artifact.getArtifactId() + " matches excluded dependency " + exclusion.getGroupId() + ":" + exclusion.getArtifactId() );
-                return  true;
-            }
-        }
-        return false;
-    }
+			Dependency dep = new Dependency();
+			dep.setGroupId(artifact.getGroupId());
+			dep.setArtifactId(artifact.getArtifactId());
+			dep.setVersion(artifact.getVersion());
+			if (!StringUtils.isEmpty(artifact.getClassifier())) {
+				dep.setClassifier(artifact.getClassifier());
+			}
+			if (!StringUtils.isEmpty(artifact.getType())) {
+				dep.setType(artifact.getType());
+			}
+			if (exclusions != null) {
+				applyExclusions(artifact, dep);
+			}
+			depMgmt.addDependency(dep);
+		}
+		pomModel.setDependencyManagement(depMgmt);
+		if (addVersionProperties) {
+			pomModel.getProperties().putAll(versionProperties);
+		}
+		getLog().debug("Added " + projectArtifacts.size() + " dependencies.");
+	}
 
-    boolean matchesExcludedDependency(Artifact artifact, DependencyExclusion exclusion) {
-        String groupId = defaultAndTrim(artifact.getGroupId());
-        String artifactId = defaultAndTrim(artifact.getArtifactId());
-        String exclusionGroupId = defaultAndTrim(exclusion.getGroupId());
-        String exclusionArtifactId = defaultAndTrim(exclusion.getArtifactId());
-        boolean groupIdMatched = ("*".equals (exclusionGroupId) || groupId.equals(exclusionGroupId));
-        boolean artifactIdMatched = ("*".equals (exclusionArtifactId) || artifactId.equals(exclusionArtifactId));
-        return groupIdMatched && artifactIdMatched;
-    }
+	boolean isExcludedDependency(Artifact artifact) {
+		if (dependencyExclusions == null || dependencyExclusions.size() == 0) {
+			return false;
+		}
+		for (DependencyExclusion exclusion : dependencyExclusions) {
+			if (matchesExcludedDependency(artifact, exclusion)) {
+				getLog().debug("Artifact " + artifact.getGroupId() + ":" + artifact.getArtifactId()
+						+ " matches excluded dependency " + exclusion.getGroupId() + ":" + exclusion.getArtifactId());
+				return true;
+			}
+		}
+		return false;
+	}
 
-    private String defaultAndTrim(String string) {
-        return defaultString(trim(string), "");
-    }
+	boolean matchesExcludedDependency(Artifact artifact, DependencyExclusion exclusion) {
+		String groupId = defaultAndTrim(artifact.getGroupId());
+		String artifactId = defaultAndTrim(artifact.getArtifactId());
+		String exclusionGroupId = defaultAndTrim(exclusion.getGroupId());
+		String exclusionArtifactId = defaultAndTrim(exclusion.getArtifactId());
+		boolean groupIdMatched = ("*".equals(exclusionGroupId) || groupId.equals(exclusionGroupId));
+		boolean artifactIdMatched = ("*".equals(exclusionArtifactId) || artifactId.equals(exclusionArtifactId));
+		return groupIdMatched && artifactIdMatched;
+	}
 
-    private void applyExclusions(Artifact artifact, Dependency dep) {
-        for (BomExclusion exclusion : exclusions) {
-            if (exclusion.getDependencyGroupId().equals(artifact.getGroupId()) &&
-                    exclusion.getDependencyArtifactId().equals(artifact.getArtifactId())) {
-                Exclusion ex = new Exclusion();
-                ex.setGroupId(exclusion.getExclusionGroupId());
-                ex.setArtifactId(exclusion.getExclusionArtifactId());
-                dep.addExclusion(ex);
-            }
-        }
-    }
+	private String defaultAndTrim(String string) {
+		return defaultString(trim(string), "");
+	}
 
+	private void applyExclusions(Artifact artifact, Dependency dep) {
+		for (BomExclusion exclusion : exclusions) {
+			if (exclusion.getDependencyGroupId().equals(artifact.getGroupId())
+					&& exclusion.getDependencyArtifactId().equals(artifact.getArtifactId())) {
+				Exclusion ex = new Exclusion();
+				ex.setGroupId(exclusion.getExclusionGroupId());
+				ex.setArtifactId(exclusion.getExclusionArtifactId());
+				dep.addExclusion(ex);
+			}
+		}
+	}
 
-    static class ModelWriter {
+	static class ModelWriter {
 
-        void writeModel( Model pomModel, File outputFile )
-            throws MojoExecutionException
-        {
-            if ( !outputFile.getParentFile().exists() )
-            {
-                outputFile.getParentFile().mkdirs();
-            }
-            try (FileWriter writer = new FileWriter( outputFile )) {
-                MavenXpp3Writer mavenWriter = new MavenXpp3Writer();
-                mavenWriter.write(writer, pomModel);
-            }
-            catch ( IOException e )
-            {
-                e.printStackTrace();
-                throw new MojoExecutionException( "Unable to write pom file.", e );
-            }
+		void writeModel(Model pomModel, File outputFile) throws MojoExecutionException {
+			if (!outputFile.getParentFile().exists()) {
+				outputFile.getParentFile().mkdirs();
+			}
+			try (FileWriter writer = new FileWriter(outputFile)) {
+				MavenXpp3Writer mavenWriter = new MavenXpp3Writer();
+				mavenWriter.write(writer, pomModel);
+			} catch (IOException e) {
+				e.printStackTrace();
+				throw new MojoExecutionException("Unable to write pom file.", e);
+			}
 
-        }
-    }
+		}
+	}
 
 }
