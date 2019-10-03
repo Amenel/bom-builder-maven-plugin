@@ -4,6 +4,7 @@ import static org.codehaus.plexus.util.StringUtils.defaultString;
 import static org.codehaus.plexus.util.StringUtils.trim;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Exclusion;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.building.ModelBuilder;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.model.io.xpp3.MavenXpp3Writer;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -28,6 +30,7 @@ import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuilder;
 import org.codehaus.plexus.util.StringUtils;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 /**
  * Build a BOM based on the dependencies in a GAV
@@ -35,8 +38,6 @@ import org.codehaus.plexus.util.StringUtils;
 @Mojo(name = "build-bom", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresDependencyResolution = ResolutionScope.COMPILE)
 public class BuildBomMojo extends AbstractMojo {
 
-	public static final String VERSION_PROPERTY_PREFIX = "version.";
-	public static final String VERSION_PROPERTY_SUFFIX = "-version";
 	/**
 	 * BOM groupId
 	 */
@@ -80,9 +81,22 @@ public class BuildBomMojo extends AbstractMojo {
 	private boolean useVersionSuffix;
 
 	/**
+	 * Whether to append to an existing file (if {@code true}).
+	 */
+	@Parameter(property = "bom-builder.appendToBom")
+	private boolean appendToBom;
+
+	/**
+	 * Whether the output file is to be generated outside of target (if
+	 * {@code true}).
+	 */
+	@Parameter(property = "bom-builder.absoluteFilepath")
+	private boolean absoluteFilepath;
+
+	/**
 	 * BOM output file
 	 */
-	@Parameter(defaultValue = "bom-pom.xml")
+	@Parameter(property = "bom-builder.outputFilename", defaultValue = "bom-pom.xml")
 	String outputFilename;
 
 	/**
@@ -124,6 +138,7 @@ public class BuildBomMojo extends AbstractMojo {
 
 	private final PomDependencyVersionsTransformer versionsTransformer;
 	private final ModelWriter modelWriter;
+	private final MavenXpp3Reader mavenXpp3Reader;
 
 	public BuildBomMojo() {
 		this(new ModelWriter(), new PomDependencyVersionsTransformer());
@@ -132,6 +147,7 @@ public class BuildBomMojo extends AbstractMojo {
 	public BuildBomMojo(ModelWriter modelWriter, PomDependencyVersionsTransformer versionsTransformer) {
 		this.versionsTransformer = versionsTransformer;
 		this.modelWriter = modelWriter;
+		this.mavenXpp3Reader = new MavenXpp3Reader();
 	}
 
 	public void execute() throws MojoExecutionException {
@@ -142,43 +158,62 @@ public class BuildBomMojo extends AbstractMojo {
 			model = versionsTransformer.transformPomModel(model, useVersionSuffix);
 			getLog().debug("Dependencies versions converted to properties");
 		}
-		modelWriter.writeModel(model, new File(mavenProject.getBuild().getDirectory(), outputFilename));
+		File outputFile;
+		if (absoluteFilepath) {
+			outputFile = new File(outputFilename);
+		} else {
+			outputFile = new File(mavenProject.getBuild().getDirectory(), outputFilename);
+		}
+
+		modelWriter.writeModel(model, outputFile);
 	}
 
-	private Model initializeModel() {
-		Model pomModel = new Model();
-		pomModel.setModelVersion("4.0.0");
+	private Model initializeModel() throws MojoExecutionException {
+		Model pomModel;
+		if (this.appendToBom) {
+			try {
+				pomModel = mavenXpp3Reader.read(new FileInputStream(new File(outputFilename)));
+				return pomModel;
+			} catch (IOException | XmlPullParserException e) {
+				throw new MojoExecutionException("Could not parse BOM file: " + outputFilename, e);
+			}
+		} else {
+			pomModel = new Model();
+			pomModel.setModelVersion("4.0.0");
 
-		pomModel.setGroupId(bomGroupId);
-		pomModel.setArtifactId(bomArtifactId);
-		pomModel.setVersion(bomVersion);
-		pomModel.setPackaging("pom");
+			pomModel.setGroupId(bomGroupId);
+			pomModel.setArtifactId(bomArtifactId);
+			pomModel.setVersion(bomVersion);
+			pomModel.setPackaging("pom");
 
-		pomModel.setName(bomName);
-		pomModel.setDescription(bomDescription);
+			pomModel.setName(bomName);
+			pomModel.setDescription(bomDescription);
 
-		pomModel.setProperties(new OrderedProperties());
-		pomModel.getProperties().setProperty("project.build.sourceEncoding", "UTF-8");
+			pomModel.setProperties(new OrderedProperties());
+			pomModel.getProperties().setProperty("project.build.sourceEncoding", "UTF-8");
+			return pomModel;
+		}
 
-		return pomModel;
 	}
 
 	private void addDependencyManagement(Model pomModel) {
 		// Sort the artifacts for readability
-		List<Artifact> projectArtifacts = new ArrayList<Artifact>(mavenProject.getArtifacts());
+		List<Artifact> projectArtifacts = new ArrayList<>(mavenProject.getArtifacts());
 		Collections.sort(projectArtifacts);
 
-		Properties versionProperties = new Properties();
-		DependencyManagement depMgmt = new DependencyManagement();
+		Properties versionProperties = retrieveProperties(pomModel);
+		DependencyManagement depMgmt = retrieveDependencyManagement(pomModel);
+
 		for (Artifact artifact : projectArtifacts) {
 			if (isExcludedDependency(artifact)) {
 				continue;
 			}
 
-			String versionPropertyName = VERSION_PROPERTY_SUFFIX + artifact.getGroupId();
+			String versionPropertyName = VersionPropertyNames.buildPropertyName(useVersionSuffix, artifact.getArtifactId());
 			if (versionProperties.getProperty(versionPropertyName) != null
 					&& !versionProperties.getProperty(versionPropertyName).equals(artifact.getVersion())) {
-				versionPropertyName = VERSION_PROPERTY_SUFFIX + artifact.getGroupId() + "." + artifact.getArtifactId();
+				versionPropertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(useVersionSuffix,
+						artifact.getGroupId(), artifact.getArtifactId());
 			}
 			versionProperties.setProperty(versionPropertyName, artifact.getVersion());
 
@@ -195,7 +230,9 @@ public class BuildBomMojo extends AbstractMojo {
 			if (exclusions != null) {
 				applyExclusions(artifact, dep);
 			}
-			depMgmt.addDependency(dep);
+			if (!depMgmt.getDependencies().contains(dep)) {
+				depMgmt.addDependency(dep);
+			}
 		}
 		pomModel.setDependencyManagement(depMgmt);
 		if (addVersionProperties) {
@@ -204,8 +241,32 @@ public class BuildBomMojo extends AbstractMojo {
 		getLog().debug("Added " + projectArtifacts.size() + " dependencies.");
 	}
 
+	/**
+	 * @param pomModel
+	 * @return
+	 */
+	private DependencyManagement retrieveDependencyManagement(Model pomModel) {
+		DependencyManagement depMgmt = pomModel.getDependencyManagement();
+		if (depMgmt == null) {
+			depMgmt = new DependencyManagement();
+		}
+		return depMgmt;
+	}
+
+	/**
+	 * @param pomModel
+	 * @return
+	 */
+	private Properties retrieveProperties(Model pomModel) {
+		Properties versionProperties = pomModel.getProperties();
+		if (versionProperties == null) {
+			versionProperties = new Properties();
+		}
+		return versionProperties;
+	}
+
 	boolean isExcludedDependency(Artifact artifact) {
-		if (dependencyExclusions == null || dependencyExclusions.size() == 0) {
+		if (dependencyExclusions == null || dependencyExclusions.isEmpty()) {
 			return false;
 		}
 		for (DependencyExclusion exclusion : dependencyExclusions) {
@@ -254,7 +315,6 @@ public class BuildBomMojo extends AbstractMojo {
 				MavenXpp3Writer mavenWriter = new MavenXpp3Writer();
 				mavenWriter.write(writer, pomModel);
 			} catch (IOException e) {
-				e.printStackTrace();
 				throw new MojoExecutionException("Unable to write pom file.", e);
 			}
 

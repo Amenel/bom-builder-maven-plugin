@@ -43,11 +43,8 @@ class PomDependencyVersionsTransformer {
 			Set<String> artifactIds = groupIdArtifactIds.get(groupId);
 			if (artifactIds.size() == 1
 					|| allArtifactsInGroupHaveSameVersion(groupId, groupIdArtifactIdVersions, artifactIds)) {
-				String artifactIdToUse = "";
-				for (String artifactId : artifactIds) {
-					artifactIdToUse = artifactId;
-				}
-				String propertyName = buildPropertyNameForArtifact(artifactIdToUse);
+				String nameToUse = VersionPropertyNames.getPropertyNameToUse(useSuffix, groupId, artifactIds);
+				String propertyName = VersionPropertyNames.buildPropertyName(useSuffix, nameToUse);
 				properties.setProperty(propertyName, groupVersion.getValue());
 				for (String artifactId : artifactIds) {
 					String groupIdArtifactId = groupId + ":" + artifactId;
@@ -56,7 +53,7 @@ class PomDependencyVersionsTransformer {
 			} else {
 				for (String artifactId : artifactIds) {
 					String groupIdArtifactId = groupId + ":" + artifactId;
-					String propertyName = buildPropertyNameForGroupAndArtifact(groupId, artifactId);
+					String propertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(useSuffix, groupId, artifactId);
 					groupIdArtifactIdPropertyNames.put(groupIdArtifactId, propertyName);
 					properties.setProperty(propertyName, groupIdArtifactIdVersions.get(groupIdArtifactId));
 				}
@@ -70,24 +67,6 @@ class PomDependencyVersionsTransformer {
 			dependency.setVersion("${" + propertyName + "}");
 		}
 		return pomModel;
-	}
-
-	/**
-	 * @param groupId
-	 * @return
-	 */
-	private String buildPropertyNameForArtifact(String groupId) {
-		if (!useSuffix) {
-			return BuildBomMojo.VERSION_PROPERTY_PREFIX + groupId;
-		}
-		return groupId + BuildBomMojo.VERSION_PROPERTY_SUFFIX;
-	}
-
-	private String buildPropertyNameForGroupAndArtifact(String groupId, String artifactId) {
-		if (!useSuffix) {
-			return BuildBomMojo.VERSION_PROPERTY_PREFIX + groupId + "." + artifactId;
-		}
-		return artifactId + BuildBomMojo.VERSION_PROPERTY_SUFFIX;
 	}
 
 	private boolean allArtifactsInGroupHaveSameVersion(String groupId, Map<String, String> groupIdArtifactIdVersions,
