@@ -15,7 +15,7 @@ public class PomDependencyVersionsTransformerTest {
 		Dependency dependency = createDependency("groupId", "artifactId", "version");
 		addDependency(pomModel, dependency);
 
-		Model transformedModel = transformer.transformPomModel(pomModel, false);
+		Model transformedModel = transformer.transformPomModel(pomModel);
 
 		assertEquals(1, transformedModel.getProperties().size());
 		String versionKey = createKey(dependency);
@@ -33,7 +33,7 @@ public class PomDependencyVersionsTransformerTest {
 		Dependency dependency2 = createDependency("groupId", "artifactId2", "version2");
 		addDependency(pomModel, dependency2);
 
-		Model transformedModel = transformer.transformPomModel(pomModel, false);
+		Model transformedModel = transformer.transformPomModel(pomModel);
 
 		assertEquals(2, transformedModel.getProperties().size());
 		String versionKey1 = createKeyIncludingArtifactId(dependency1);

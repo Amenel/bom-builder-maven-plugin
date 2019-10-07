@@ -75,12 +75,6 @@ public class BuildBomMojo extends AbstractMojo {
 	private String bomDescription;
 
 	/**
-	 * Whether to use a prefix (if {@code true}) or a suffix.
-	 */
-	@Parameter(property = "bom-builder.useVersionSuffix")
-	private boolean useVersionSuffix;
-
-	/**
 	 * Whether to append to an existing file (if {@code true}).
 	 */
 	@Parameter(property = "bom-builder.appendToBom")
@@ -155,7 +149,7 @@ public class BuildBomMojo extends AbstractMojo {
 		Model model = initializeModel();
 		addDependencyManagement(model);
 		if (usePropertiesForVersion) {
-			model = versionsTransformer.transformPomModel(model, useVersionSuffix);
+			model = versionsTransformer.transformPomModel(model);
 			getLog().debug("Dependencies versions converted to properties");
 		}
 		File outputFile;
@@ -209,11 +203,11 @@ public class BuildBomMojo extends AbstractMojo {
 				continue;
 			}
 
-			String versionPropertyName = VersionPropertyNames.buildPropertyName(useVersionSuffix, artifact.getArtifactId());
+			String versionPropertyName = VersionPropertyNames.buildPropertyName(artifact.getArtifactId());
 			if (versionProperties.getProperty(versionPropertyName) != null
 					&& !versionProperties.getProperty(versionPropertyName).equals(artifact.getVersion())) {
-				versionPropertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(useVersionSuffix,
-						artifact.getGroupId(), artifact.getArtifactId());
+				versionPropertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(artifact.getGroupId(),
+						artifact.getArtifactId());
 			}
 			versionProperties.setProperty(versionPropertyName, artifact.getVersion());
 

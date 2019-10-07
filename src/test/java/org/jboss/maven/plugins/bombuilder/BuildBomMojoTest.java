@@ -34,7 +34,7 @@ public class BuildBomMojoTest {
 	public void testDependencyVersionIsNotStoredInPropertiesByDefault() throws Exception {
 		mojo.execute();
 
-		verify(versionTransformer, never()).transformPomModel(any(Model.class), any(Boolean.class));
+		verify(versionTransformer, never()).transformPomModel(any(Model.class));
 	}
 
 	@Test
@@ -43,7 +43,7 @@ public class BuildBomMojoTest {
 
 		mojo.execute();
 
-		verify(versionTransformer, times(1)).transformPomModel(any(Model.class), any(Boolean.class));
+		verify(versionTransformer, times(1)).transformPomModel(any(Model.class));
 	}
 
 	private BuildBomMojo createBuildBomMojo() {

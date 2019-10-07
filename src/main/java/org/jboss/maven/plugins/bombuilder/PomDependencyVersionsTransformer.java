@@ -12,10 +12,7 @@ import org.apache.maven.model.Model;
 
 class PomDependencyVersionsTransformer {
 
-	private boolean useSuffix;
-
-	public Model transformPomModel(Model model, Boolean useSuffix) {
-		this.useSuffix = useSuffix;
+	public Model transformPomModel(Model model) {
 		Model pomModel = model.clone();
 		DependencyManagement depMgmt = pomModel.getDependencyManagement();
 		Map<String, String> groupIdArtifactIdVersions = new TreeMap<>();
@@ -43,8 +40,7 @@ class PomDependencyVersionsTransformer {
 			Set<String> artifactIds = groupIdArtifactIds.get(groupId);
 			if (artifactIds.size() == 1
 					|| allArtifactsInGroupHaveSameVersion(groupId, groupIdArtifactIdVersions, artifactIds)) {
-				String nameToUse = VersionPropertyNames.getPropertyNameToUse(useSuffix, groupId, artifactIds);
-				String propertyName = VersionPropertyNames.buildPropertyName(useSuffix, nameToUse);
+				String propertyName = VersionPropertyNames.buildPropertyName(groupId);
 				properties.setProperty(propertyName, groupVersion.getValue());
 				for (String artifactId : artifactIds) {
 					String groupIdArtifactId = groupId + ":" + artifactId;
@@ -53,7 +49,8 @@ class PomDependencyVersionsTransformer {
 			} else {
 				for (String artifactId : artifactIds) {
 					String groupIdArtifactId = groupId + ":" + artifactId;
-					String propertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(useSuffix, groupId, artifactId);
+					String propertyName = VersionPropertyNames.buildPropertyNameForGroupAndArtifact(groupId,
+							artifactId);
 					groupIdArtifactIdPropertyNames.put(groupIdArtifactId, propertyName);
 					properties.setProperty(propertyName, groupIdArtifactIdVersions.get(groupIdArtifactId));
 				}
