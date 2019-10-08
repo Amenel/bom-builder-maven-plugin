@@ -107,7 +107,7 @@ public class BuildBomMojo extends AbstractMojo {
 	private List<DependencyExclusion> dependencyExclusions;
 
 	/**
-	 * Whether use properties to specify dependency versions in BOM
+	 * Whether to use properties to specify dependency versions in BOM
 	 */
 	@Parameter
 	boolean usePropertiesForVersion;
@@ -146,19 +146,21 @@ public class BuildBomMojo extends AbstractMojo {
 
 	public void execute() throws MojoExecutionException {
 		getLog().debug("Generating BOM");
+
 		Model model = initializeModel();
 		addDependencyManagement(model);
+
 		if (usePropertiesForVersion) {
 			model = versionsTransformer.transformPomModel(model);
 			getLog().debug("Dependencies versions converted to properties");
 		}
+
 		File outputFile;
 		if (absoluteFilepath) {
 			outputFile = new File(outputFilename);
 		} else {
 			outputFile = new File(mavenProject.getBuild().getDirectory(), outputFilename);
 		}
-
 		modelWriter.writeModel(model, outputFile);
 	}
 
@@ -187,7 +189,6 @@ public class BuildBomMojo extends AbstractMojo {
 			pomModel.getProperties().setProperty("project.build.sourceEncoding", "UTF-8");
 			return pomModel;
 		}
-
 	}
 
 	private void addDependencyManagement(Model pomModel) {
@@ -195,7 +196,7 @@ public class BuildBomMojo extends AbstractMojo {
 		List<Artifact> projectArtifacts = new ArrayList<>(mavenProject.getArtifacts());
 		Collections.sort(projectArtifacts);
 
-		Properties versionProperties = retrieveProperties(pomModel);
+		Properties versionProperties = new Properties();
 		DependencyManagement depMgmt = retrieveDependencyManagement(pomModel);
 
 		for (Artifact artifact : projectArtifacts) {
@@ -224,7 +225,7 @@ public class BuildBomMojo extends AbstractMojo {
 			if (exclusions != null) {
 				applyExclusions(artifact, dep);
 			}
-			if (!depMgmt.getDependencies().contains(dep)) {
+			if (!isKnownDependency(depMgmt, dep)) {
 				depMgmt.addDependency(dep);
 			}
 		}
@@ -233,6 +234,26 @@ public class BuildBomMojo extends AbstractMojo {
 			pomModel.getProperties().putAll(versionProperties);
 		}
 		getLog().debug("Added " + projectArtifacts.size() + " dependencies.");
+	}
+
+	private boolean isKnownDependency(DependencyManagement depMgmt, Dependency dep) {
+		List<Dependency> knownDependencies = depMgmt.getDependencies();
+
+		if (knownDependencies == null || knownDependencies.isEmpty()) {
+			return false;
+		}
+		for (Dependency dependency : knownDependencies) {
+			boolean identical = true;
+
+			identical = dependency.getGroupId().equals(dep.getGroupId());
+			identical = identical && dependency.getArtifactId().equals(dep.getArtifactId());
+			identical = identical && dependency.getType().equals(dep.getType());
+
+			if (identical) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -245,18 +266,6 @@ public class BuildBomMojo extends AbstractMojo {
 			depMgmt = new DependencyManagement();
 		}
 		return depMgmt;
-	}
-
-	/**
-	 * @param pomModel
-	 * @return
-	 */
-	private Properties retrieveProperties(Model pomModel) {
-		Properties versionProperties = pomModel.getProperties();
-		if (versionProperties == null) {
-			versionProperties = new Properties();
-		}
-		return versionProperties;
 	}
 
 	boolean isExcludedDependency(Artifact artifact) {
